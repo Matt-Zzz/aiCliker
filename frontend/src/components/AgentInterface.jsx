@@ -1,7 +1,63 @@
 import { useState } from "react";
 import { apiFetch } from "../api";
+import PlatformAgent from "./PlatformAgent";
 
 export default function AgentInterface({ credentials, onSolve }) {
+  const [mode, setMode] = useState("solve"); // "solve" | "platform"
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* Header */}
+      <header className="text-center">
+        <h1 className="text-3xl font-bold text-slate-900">AI Academic Agent</h1>
+        <p className="text-slate-500 mt-2">
+          Paste a question for an instant solution, or let the agent navigate
+          your platform automatically.
+        </p>
+      </header>
+
+      {/* Mode Tabs */}
+      <div className="flex justify-center">
+        <div className="inline-flex bg-slate-100 rounded-2xl p-1">
+          <button
+            onClick={() => setMode("solve")}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              mode === "solve"
+                ? "bg-white text-blue-600 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-wand-magic-sparkles mr-2"></i>
+            Quick Solve
+          </button>
+          <button
+            onClick={() => setMode("platform")}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              mode === "platform"
+                ? "bg-white text-blue-600 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <i className="fa-solid fa-globe mr-2"></i>
+            Platform Agent
+          </button>
+        </div>
+      </div>
+
+      {/* ── Quick Solve Mode ── */}
+      {mode === "solve" && (
+        <QuickSolve credentials={credentials} onSolve={onSolve} />
+      )}
+
+      {/* ── Platform Agent Mode ── */}
+      {mode === "platform" && <PlatformAgent credentials={credentials} />}
+    </div>
+  );
+}
+
+/* ─── Quick Solve (the original single-question solver) ───────────────── */
+
+function QuickSolve({ credentials, onSolve }) {
   const [question, setQuestion] = useState("");
   const [platform, setPlatform] = useState(
     credentials.length > 0 ? credentials[0].platform : "Other"
@@ -23,7 +79,6 @@ export default function AgentInterface({ credentials, onSolve }) {
       });
       setResult(data);
 
-      // Add to logs
       onSolve({
         id: crypto.randomUUID?.() || Math.random().toString(36).substr(2, 9),
         timestamp: new Date().toISOString(),
@@ -42,16 +97,7 @@ export default function AgentInterface({ credentials, onSolve }) {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Header */}
-      <header className="text-center">
-        <h1 className="text-3xl font-bold text-slate-900">AI Academic Agent</h1>
-        <p className="text-slate-500 mt-2">
-          Choose a platform or paste a question for immediate step-by-step
-          resolution.
-        </p>
-      </header>
-
+    <>
       {/* Input Section */}
       <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
         <div className="flex flex-col space-y-6">
@@ -142,7 +188,6 @@ export default function AgentInterface({ credentials, onSolve }) {
       {/* Result */}
       {result && (
         <div className="bg-white border-2 border-green-500 rounded-3xl overflow-hidden shadow-xl">
-          {/* Result Header */}
           <div className="bg-green-50 p-6 border-b border-green-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <h3 className="text-xl font-bold text-green-900 flex items-center">
               <i className="fa-solid fa-check-circle mr-2"></i>
@@ -160,7 +205,6 @@ export default function AgentInterface({ credentials, onSolve }) {
             </div>
           </div>
 
-          {/* Result Body */}
           <div className="p-8 space-y-6">
             <div>
               <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">
@@ -180,7 +224,6 @@ export default function AgentInterface({ credentials, onSolve }) {
             </div>
           </div>
 
-          {/* Result Footer */}
           <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
             <p className="text-xs text-slate-400 flex items-center justify-center">
               <i className="fa-solid fa-info-circle mr-1"></i>
@@ -189,6 +232,6 @@ export default function AgentInterface({ credentials, onSolve }) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

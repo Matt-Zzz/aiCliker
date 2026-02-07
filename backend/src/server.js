@@ -3,10 +3,17 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { EventEmitter } from 'events';
+import { v4 as uuidv4 } from 'uuid';
 import { store } from './data/store.js';
 import { solveAcademicQuestion } from './services/agent.js';
+import { runAgent, stopTask, getTask } from './services/browser-agent/agent-loop.js';
 
 dotenv.config();
+
+// Event bus for streaming agent progress via SSE
+const agentEvents = new EventEmitter();
+agentEvents.setMaxListeners(50);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -120,7 +127,78 @@ app.get('/api/logs', (_req, res) => {
   res.json(store.getLogs());
 });
 
-// Task orchestration stub
+// ────────────────────────────────────────
+// Platform Agent (browser automation)
+// ────────────────────────────────────────
+
+/** Start an agent run — returns immediately with a taskId. */
+app.post('/api/agent/run', (req, res) => {
+  const { startUrl, goal, credentials } = req.body;
+
+  if (!startUrl || !goal) {
+    return res.status(400).json({ message: 'startUrl and goal are required' });
+  }
+
+  const taskId = uuidv4();
+
+  const emit = (event) => {
+    agentEvents.emit(taskId, { ...event, timestamp: new Date().toISOString() });
+  };
+
+  // Fire-and-forget — the SSE stream delivers progress
+  runAgent({ taskId, startUrl, goal, credentials, emit }).catch((err) => {
+    emit({ type: 'error', message: err.message });
+  });
+
+  res.json({ taskId });
+});
+
+/** SSE stream — the frontend listens here for real-time agent progress. */
+app.get('/api/agent/tasks/:id/events', (req, res) => {
+  const { id } = req.params;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  // Send an initial heartbeat so the client knows the connection is alive
+  res.write(`data: ${JSON.stringify({ type: 'connected', taskId: id })}\n\n`);
+
+  const listener = (event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  agentEvents.on(id, listener);
+
+  req.on('close', () => {
+    agentEvents.off(id, listener);
+  });
+});
+
+/** Stop a running agent task. */
+app.post('/api/agent/tasks/:id/stop', async (req, res) => {
+  const { id } = req.params;
+  await stopTask(id);
+  res.json({ message: 'Stop signal sent' });
+});
+
+/** Get task details. */
+app.get('/api/agent/tasks/:id', (req, res) => {
+  const task = getTask(req.params.id);
+  if (!task) return res.status(404).json({ message: 'Task not found' });
+  // Strip large fields for the summary endpoint
+  const { steps, extractedContent, solvedQuestions, ...summary } = task;
+  res.json({
+    ...summary,
+    stepCount: steps.length,
+    extractedCount: extractedContent.length,
+    solvedCount: solvedQuestions.length,
+  });
+});
+
+// Legacy task stubs (kept for backwards compat)
 app.post('/api/tasks', (req, res) => {
   const { credentials } = req.body;
   const task = store.queueTask({ credentials });
